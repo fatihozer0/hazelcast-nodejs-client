@@ -91,6 +91,7 @@ import {PagingPredicateHolder} from '../protocol/PagingPredicateHolder';
 import {MapEntriesWithPagingPredicateCodec} from '../codec/MapEntriesWithPagingPredicateCodec';
 import * as Long from 'long';
 import {SchemaNotReplicatedError} from '../core';
+import {MapRemoveAllCodec} from "../codec/MapRemoveAllCodec";
 
 type EntryEventHandler = (key: Data, value: Data, oldValue: Data, mergingValue: Data, eventType: number,
                           uuid: UUID, numberOfAffectedEntries: number) => void;
@@ -413,6 +414,22 @@ export class MapProxy<K, V> extends BaseProxy implements IMap<K, V> {
             throw e;
         }
         return this.removeInternal(keyData, valueData);
+    }
+
+    removeAll(key: K): Promise<ReadOnlyLazyList<V>> {
+        let keyData: Data;
+        try{
+            keyData = this.toData(key);
+        } catch (e) {
+            if (e instanceof SchemaNotReplicatedError){
+                return this.registerSchema(e.schema, e.clazz).then(() => this.removeAll(key));
+            }
+            throw e;
+        }
+        return this.encodeInvokeOnKey(MapRemoveAllCodec, keyData, (clientMessage) => {
+            const response = MapRemoveCodec.decodeResponse(clientMessage);
+            return new ReadOnlyLazyList<V>(response, this.serializationService);
+        }, keyData, 1);
     }
 
     size(): Promise<number> {
